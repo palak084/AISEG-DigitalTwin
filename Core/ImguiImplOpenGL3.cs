@@ -255,7 +255,8 @@ namespace AISEG.DigitalTwin.Core
                         }
                         else
                         {
-                            throw new NotImplementedException("User callbacks are not implemented yet...");
+                            // Ignore unknown callbacks instead of crashing
+                            continue;
                         }
                     }
                     else
