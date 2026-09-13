@@ -6,6 +6,7 @@ namespace AISEG.DigitalTwin.Core;
 
 public sealed class DashboardServer : IDisposable
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpListener _listener = new();
     private readonly SimulationManager _simulation;
     private readonly string _dashboardRoot;
@@ -56,6 +57,7 @@ public sealed class DashboardServer : IDisposable
                 length = _simulation.ConveyorLength,
                 width = _simulation.ConveyorWidth,
                 speed = _simulation.ConveyorSpeed,
+                decisions = _simulation.Decisions,
                 sensors = new { depth = _simulation.SensorDepth, nir = _simulation.SensorNir, loadCell = _simulation.SensorLoadCell, inductive = _simulation.SensorInductive, capacitive = _simulation.SensorCapacitive }
             });
             return;
@@ -92,7 +94,7 @@ public sealed class DashboardServer : IDisposable
 
     private static async Task WriteJsonAsync(HttpListenerContext context, object value)
     {
-        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value));
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value, JsonOptions));
         context.Response.ContentType = "application/json";
         context.Response.ContentLength64 = bytes.Length;
         await context.Response.OutputStream.WriteAsync(bytes);

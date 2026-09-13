@@ -12,6 +12,19 @@ let hazardTotal = 43;
 function updateClock() {
   clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
+
+function renderDecisions(decisions) {
+  const feed = document.querySelector('#decisionFeed');
+  if (!decisions.length) {
+    feed.innerHTML = '<div class="feed-row">Waiting for the first processed item...</div>';
+    return;
+  }
+  feed.innerHTML = decisions.map(decision => {
+    const result = decision.result === 'HAZARD' ? 'hazard-row' : 'safe-row';
+    const time = new Date(decision.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    return `<div class="feed-row ${result}"><b>${decision.result}</b> ${decision.material} <time>${time}</time></div>`;
+  }).join('');
+}
 updateClock();
 setInterval(updateClock, 1000);
 
@@ -52,6 +65,13 @@ async function refreshLiveState() {
     document.querySelector('#throughput').textContent = state.running ? Math.round(120 * state.confidence / 100) : 0;
     document.querySelector('#beltSpeed').textContent = state.speed.toFixed(2);
     document.querySelector('#classification').textContent = `${state.active} item(s) currently tracked by the live twin.`;
+    renderDecisions(state.decisions);
+    const latest = state.decisions[0];
+    if (latest) {
+      const label = latest.result === 'HAZARD' ? '⚠ HAZARD — DIVERT TO REJECT' : '✓ SAFE — KEEP ON BELT';
+      document.querySelector('.classification-body strong').textContent = label;
+      document.querySelector('#classification').textContent = `${latest.material} classified by the live twin.`;
+    }
     document.querySelector('.status-strip div:nth-child(1) strong').textContent = state.sensors.depth ? 'ONLINE' : 'OFFLINE';
     document.querySelector('.status-strip div:nth-child(2) strong').textContent = state.sensors.depth ? 'ONLINE' : 'OFFLINE';
     document.querySelector('.status-strip div:nth-child(3) strong').textContent = state.sensors.nir ? 'ONLINE' : 'OFFLINE';

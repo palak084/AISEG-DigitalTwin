@@ -5,6 +5,8 @@ using AISEG.DigitalTwin.Conveyor;
 
 namespace AISEG.DigitalTwin.Core;
 
+public sealed record DecisionRecord(string Result, string Material, DateTime Timestamp);
+
 public sealed class SimulationManager
 {
     private readonly object _sync = new();
@@ -12,6 +14,7 @@ public sealed class SimulationManager
     private readonly ConveyorParameters _parameters;
     
     private readonly List<WasteObject> _activeWaste = new();
+    private readonly List<DecisionRecord> _decisions = new();
     private readonly RoboticArm[] _arms;
     
     private float _timeSinceLastSpawn = 0.0f;
@@ -48,6 +51,14 @@ public sealed class SimulationManager
     public float ConveyorSpeed => _parameters.Speed;
     public bool IsRunning => _parameters.IsRunning;
     public int ActiveItemCount { get { lock (_sync) return _activeWaste.Count; } }
+    public IReadOnlyList<DecisionRecord> Decisions
+    {
+        get
+        {
+            lock (_sync)
+                return _decisions.ToArray();
+        }
+    }
     
     public SimulationManager(UConveyorPath path, ConveyorParameters parameters, RoboticArm[] arms)
     {
@@ -81,6 +92,7 @@ public sealed class SimulationManager
             ItemsProcessed = 0;
             SafeItems = 0;
             HazardItems = 0;
+            _decisions.Clear();
         }
     }
 
@@ -171,13 +183,26 @@ public sealed class SimulationManager
                 // Regardless of whether an arm picked it, we remove it from the belt 
                 // to simulate it being processed or falling off the end.
                 if (waste.EvalState == WasteObject.EvaluationState.Remove)
+                {
                     HazardItems++;
+                    AddDecision("HAZARD", waste.Type.ToString());
+                }
                 else
+                {
                     SafeItems++;
+                    AddDecision("SAFE", waste.Type.ToString());
+                }
                 _activeWaste.RemoveAt(i);
                 ItemsProcessed++;
             }
         }
+    }
+
+    private void AddDecision(string result, string material)
+    {
+        _decisions.Insert(0, new DecisionRecord(result, material, DateTime.Now));
+        if (_decisions.Count > 12)
+            _decisions.RemoveAt(_decisions.Count - 1);
     }
     
     private void SpawnWaste()
