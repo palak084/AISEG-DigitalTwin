@@ -9,6 +9,7 @@ public sealed class Conveyor
 {
     private readonly ConveyorParameters _parameters;
     private readonly UConveyorPath _path;
+    public UConveyorPath Path => _path;
     private readonly ConveyorBeltMesh _belt;
 
     private readonly List<Cube> _frames = new();
@@ -736,42 +737,7 @@ public sealed class Conveyor
             );
         }
 
-        // -----------------------------------------------------
-        // DRIVE PULLEY
-        // -----------------------------------------------------
-
-        AddPulley(
-            new Vector3(
-                _path.HalfStraightLength +
-                PathCurveRadius,
-                1.06f,
-                0.0f
-            ),
-            0.22f,
-            new Vector3(
-                0.24f,
-                0.25f,
-                0.26f
-            )
-        );
-
-        // -----------------------------------------------------
-        // RETURN PULLEY
-        // -----------------------------------------------------
-
-        AddPulley(
-            new Vector3(
-                -_path.HalfStraightLength,
-                1.06f,
-                PathCurveRadius
-            ),
-            0.25f,
-            new Vector3(
-                0.18f,
-                0.19f,
-                0.20f
-            )
-        );
+        // Pulley cylinders removed as per user request ("log at u turn").
     }
 
     // =========================================================

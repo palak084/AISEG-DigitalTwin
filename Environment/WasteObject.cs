@@ -49,7 +49,16 @@ public sealed class WasteObject
 
     private const float BeltTopHeight = 1.20f;
 
+    public enum EvaluationState
+    {
+        Pending,
+        Keep,
+        Remove
+    }
+
     public WasteType Type { get; }
+    
+    public EvaluationState EvalState { get; set; } = EvaluationState.Pending;
 
     public float Distance =>
         _distance;
@@ -963,6 +972,30 @@ public sealed class WasteObject
             in _cylinderParts)
         {
             part.Draw(shader);
+        }
+        
+        // Draw bounding box if evaluated
+        if (EvalState != EvaluationState.Pending && _cubeParts.Count > 0)
+        {
+            // Simple bounding box based on the first part's position and an overarching scale
+            Cube bbox = new Cube();
+            bbox.Position = _cubeParts[0].Position;
+            bbox.Scale = new Vector3(0.5f, 0.5f, 0.5f); // Roughly encompasses most waste items
+            
+            if (EvalState == EvaluationState.Remove)
+                bbox.Color = new Vector3(1.0f, 0.0f, 0.0f); // Red
+            else
+                bbox.Color = new Vector3(0.0f, 1.0f, 0.0f); // Green
+                
+            // Use wireframe
+            OpenTK.Graphics.OpenGL4.GL.PolygonMode(OpenTK.Graphics.OpenGL4.TriangleFace.FrontAndBack, OpenTK.Graphics.OpenGL4.PolygonMode.Line);
+            
+            // Draw with a slightly customized color passing
+            shader.SetVector3("objectColor", bbox.Color);
+            bbox.Draw(shader);
+            
+            // Restore fill mode
+            OpenTK.Graphics.OpenGL4.GL.PolygonMode(OpenTK.Graphics.OpenGL4.TriangleFace.FrontAndBack, OpenTK.Graphics.OpenGL4.PolygonMode.Fill);
         }
     }
 }

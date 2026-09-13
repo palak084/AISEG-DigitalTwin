@@ -1,4 +1,4 @@
-﻿using OpenTK.Windowing.Desktop;
+using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.Common;
 using OpenTK.Mathematics;
 using OpenTK.Graphics.OpenGL4;
@@ -60,6 +60,15 @@ using var window =
         nativeWindowSettings
     );
 
+ImGuiNET.ImGui.CreateContext();
+ImGuiNET.ImGui.StyleColorsDark();
+var io = ImGuiNET.ImGui.GetIO();
+io.ConfigFlags |= ImGuiNET.ImGuiConfigFlags.NavEnableKeyboard;
+io.ConfigFlags |= ImGuiNET.ImGuiConfigFlags.DockingEnable;
+
+ImguiImplOpenTK4.Init(window);
+ImguiImplOpenGL3.Init();
+
 
 // ============================================================
 // 4. CAMERA
@@ -84,22 +93,31 @@ bool rightMouseDragging =
 
 
 // ============================================================
-// 6. OBJECT REFERENCES
+// 6. OBJECT REFERENCES & GLOBAL STATE
 // ============================================================
 
 Shader? shader = null;
-
 Conveyor? conveyor = null;
-
 BackgroundRenderer? background = null;
+SensorNode[]? sensorNodes = null;
+RoboticArm[]? roboticArms = null;
+SimulationManager? simulationManager = null;
 
-
+// UI State
+bool sensorDepth = true;
+bool sensorNir = true;
+bool sensorLoadCell = true;
+bool sensorInductive = true;
+bool sensorCapacitive = true;
+bool isRunning = true;
+float aiConfidence = 99.9f;
 // ============================================================
 // 7. ENVIRONMENT
 // ============================================================
 
 List<Cube> environmentObjects =
     new();
+
 
 
 // ============================================================
@@ -704,6 +722,35 @@ window.Load += () =>
             parameters
         );
 
+    // ========================================================
+    // CREATE DIGITAL TWIN COMPONENTS
+    // ========================================================
+
+    // Distribute sensors along the path
+    sensorNodes = new[] {
+        new SensorNode(conveyor.Path, 2.0f, "3D Depth Sensor", new Vector3(0.016f, 0.106f, 0.298f)),
+        new SensorNode(conveyor.Path, 4.0f, "NIR Camera", new Vector3(0.275f, 0.345f, 0.537f)),
+        new SensorNode(conveyor.Path, 6.0f, "Inductive Sensor", new Vector3(0.463f, 0.494f, 0.584f)),
+        new SensorNode(conveyor.Path, 8.0f, "Capacitive Sensor", new Vector3(0.122f, 0.353f, 0.227f))
+    };
+
+    // Get end of path for arms
+    var endPoint = conveyor.Path.GetPointAtDistance(conveyor.Path.TotalLength - 0.5f);
+    
+    // One arm on each side
+    roboticArms = new RoboticArm[]
+    {
+        new RoboticArm(
+            new Vector3(endPoint.Position.X, 0.0f, endPoint.Position.Y + 0.8f), 
+            180.0f
+        ),
+        new RoboticArm(
+            new Vector3(endPoint.Position.X, 0.0f, endPoint.Position.Y - 0.8f), 
+            0.0f
+        )
+    };
+
+    simulationManager = new SimulationManager(conveyor.Path, parameters, roboticArms);
 
     // ========================================================
     // OPEN FLOOR
@@ -1151,6 +1198,16 @@ window.UpdateFrame += args =>
     conveyor.Update(
         args.Time
     );
+
+    simulationManager?.Update(args.Time);
+
+    if (roboticArms != null)
+    {
+        foreach (var arm in roboticArms)
+        {
+            arm.Update(args.Time);
+        }
+    }
 };
 
 
@@ -1160,6 +1217,10 @@ window.UpdateFrame += args =>
 
 window.RenderFrame += args =>
 {
+    ImguiImplOpenGL3.NewFrame();
+    ImguiImplOpenTK4.NewFrame();
+    ImGuiNET.ImGui.NewFrame();
+    
     // ========================================================
     // CLEAR
     // ========================================================
@@ -1178,8 +1239,10 @@ window.RenderFrame += args =>
 
 
     // ========================================================
-    // 3D SCENE
+    // 3D SCENE (Left Half Viewport)
     // ========================================================
+    
+    GL.Viewport(0, 0, window.ClientSize.X / 2, window.ClientSize.Y);
 
     if (
         shader != null &&
@@ -1188,13 +1251,12 @@ window.RenderFrame += args =>
     {
         shader.Use();
 
-
         // ====================================================
         // ASPECT RATIO
         // ====================================================
 
         float aspectRatio =
-            window.Size.X /
+            (window.Size.X / 2.0f) /
             (float)window.Size.Y;
 
 
@@ -1400,6 +1462,24 @@ window.RenderFrame += args =>
         conveyor.Draw(
             shader
         );
+        
+        if (sensorNodes != null)
+        {
+            foreach (var node in sensorNodes)
+            {
+                node.Draw(shader);
+            }
+        }
+        
+        simulationManager?.Draw(shader);
+        
+        if (roboticArms != null)
+        {
+            foreach (var arm in roboticArms)
+            {
+                arm.Draw(shader);
+            }
+        }
 
 
         // // ====================================================
@@ -1416,6 +1496,9 @@ window.RenderFrame += args =>
         //     );
         // }
     }
+    
+    // Restore viewport for UI overlay
+    GL.Viewport(0, 0, window.ClientSize.X, window.ClientSize.Y);
 
 
     // ========================================================
@@ -1439,6 +1522,21 @@ window.RenderFrame += args =>
 
 
     // ========================================================
+    // UI OVERLAY / ANNOTATIONS
+    // ========================================================
+    DrawDashboard();
+
+    ImGuiNET.ImGui.Render();
+    ImguiImplOpenGL3.RenderDrawData(ImGuiNET.ImGui.GetDrawData());
+    
+    if (ImGuiNET.ImGui.GetIO().ConfigFlags.HasFlag(ImGuiNET.ImGuiConfigFlags.ViewportsEnable))
+    {
+        ImGuiNET.ImGui.UpdatePlatformWindows();
+        ImGuiNET.ImGui.RenderPlatformWindowsDefault();
+        window.MakeCurrent();
+    }
+
+    // ========================================================
     // DISPLAY
     // ========================================================
 
@@ -1447,13 +1545,134 @@ window.RenderFrame += args =>
 
 
 // ============================================================
-// 15. START
+void DrawDashboard()
+{
+    float halfWidth = window.ClientSize.X / 2.0f;
+    float height = window.ClientSize.Y;
+
+    // A simple Digital Twin overlay panel
+    ImGuiNET.ImGui.SetNextWindowPos(new System.Numerics.Vector2(halfWidth, 0), ImGuiNET.ImGuiCond.Always);
+    ImGuiNET.ImGui.SetNextWindowSize(new System.Numerics.Vector2(halfWidth, height), ImGuiNET.ImGuiCond.Always);
+    
+    // Custom styling based on design_theory
+    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.WindowBg, new System.Numerics.Vector4(0.02f, 0.05f, 0.08f, 1.0f));
+    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.Text, new System.Numerics.Vector4(0.85f, 0.9f, 0.95f, 1.0f));
+    
+    if (ImGuiNET.ImGui.Begin("SMART-SEG Dashboard", ImGuiNET.ImGuiWindowFlags.NoCollapse | ImGuiNET.ImGuiWindowFlags.NoMove | ImGuiNET.ImGuiWindowFlags.NoResize | ImGuiNET.ImGuiWindowFlags.NoTitleBar))
+    {
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.4f, 0.8f, 1.0f, 1.0f), "SMART-SEG       Simulation Lab       Module 1/3");
+        ImGuiNET.ImGui.Separator();
+        
+        ImGuiNET.ImGui.Spacing();
+        ImGuiNET.ImGui.Text("          INTERACTIVE PROCESS FLOW");
+        ImGuiNET.ImGui.Spacing();
+        
+        // ASCII-like diagram using text
+        ImGuiNET.ImGui.Text("  HOPPER                SENSOR ARCH     DIVERTER");
+        ImGuiNET.ImGui.Text("    |                        |              |");
+        ImGuiNET.ImGui.Text("    +------ conveyor --------+--------------+-->");
+        ImGuiNET.ImGui.Spacing();
+        
+        if (!sensorLoadCell) aiConfidence = 64.2f;
+        else aiConfidence = 99.9f;
+        
+        ImGuiNET.ImGui.Text($"  Throughput: {(isRunning ? "120/m" : "0/m")}      AI Confidence: {aiConfidence:F1}%%");
+        ImGuiNET.ImGui.Spacing();
+        ImGuiNET.ImGui.Separator();
+        
+        // Two columns
+        ImGuiNET.ImGui.Columns(2, "dashboard_columns", true);
+        ImGuiNET.ImGui.Text("SIMULATION CONTROLS");
+        ImGuiNET.ImGui.Spacing();
+        
+        ImGuiNET.ImGui.Checkbox("3D Depth Vision", ref sensorDepth);
+        ImGuiNET.ImGui.Checkbox("NIR Spectrometer", ref sensorNir);
+        ImGuiNET.ImGui.Checkbox("Load Cell (Mass)", ref sensorLoadCell);
+        ImGuiNET.ImGui.Checkbox("Inductive Sensor", ref sensorInductive);
+        ImGuiNET.ImGui.Checkbox("Capacitive Sensor", ref sensorCapacitive);
+        
+        ImGuiNET.ImGui.Spacing();
+        if (ImGuiNET.ImGui.Button("Run")) { isRunning = true; if(simulationManager != null) typeof(SimulationManager).GetField("_parameters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(simulationManager, new ConveyorParameters{IsRunning=true}); }
+        ImGuiNET.ImGui.SameLine();
+        if (ImGuiNET.ImGui.Button("Pause")) { isRunning = false; if(simulationManager != null) typeof(SimulationManager).GetField("_parameters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(simulationManager, new ConveyorParameters{IsRunning=false}); }
+        
+        ImGuiNET.ImGui.NextColumn();
+        
+        ImGuiNET.ImGui.Text("AI TUTOR");
+        ImGuiNET.ImGui.Spacing();
+        if (sensorLoadCell)
+        {
+            ImGuiNET.ImGui.TextWrapped("\"Welcome to the SMART-SEG Sensor Lab.\"");
+            ImGuiNET.ImGui.TextWrapped("\"Currently, all 5 sensors are active and the AI Confidence is at 99.9%.\"");
+            ImGuiNET.ImGui.TextWrapped("\"To begin the experiment, try turning off the Load Cell (Mass) sensor using the controls on the left.\"");
+        }
+        else
+        {
+            if (isRunning)
+            {
+                ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1.0f, 0.4f, 0.4f, 1.0f), "> System Running...");
+                ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1.0f, 0.4f, 0.4f, 1.0f), "> Hazard Missed! (Stone in bag)");
+                ImGuiNET.ImGui.Spacing();
+                ImGuiNET.ImGui.TextWrapped("\"Notice how AI Confidence dropped to 64%? Without mass data, the system cannot compute density. It just sees the plastic bag and thinks it's safe.\"");
+            }
+            else
+            {
+                ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.8f, 0.8f, 0.8f, 1.0f), "> User disabled Load Cell");
+                ImGuiNET.ImGui.Spacing();
+                ImGuiNET.ImGui.TextWrapped("\"Before you hit Run, what do you think will happen to our accuracy on hidden hazards (like stones in plastic bags)?\"");
+            }
+        }
+        
+        ImGuiNET.ImGui.Columns(1);
+        ImGuiNET.ImGui.End();
+        ImGuiNET.ImGui.PopStyleColor(2);
+    }
+    
+    // Annotations
+    if (sensorNodes != null && conveyor != null)
+    {
+        foreach (var node in sensorNodes)
+        {
+            var pos = node.GetAnnotationPosition(conveyor.Path);
+            DrawAnnotation(pos, node.Name);
+        }
+    }
+    
+    if (roboticArms != null && roboticArms.Length > 0)
+    {
+        DrawAnnotation(roboticArms[0].BasePosition + new Vector3(0, 1.5f, 0), "FANUC Sorter L");
+        DrawAnnotation(roboticArms[1].BasePosition + new Vector3(0, 1.5f, 0), "FANUC Sorter R");
+    }
+}
+
+void DrawAnnotation(Vector3 worldPos, string text)
+{
+    float halfWidth = window.ClientSize.X / 2.0f;
+    float aspect = halfWidth / (float)window.ClientSize.Y;
+    var viewProj = camera.GetViewMatrix() * camera.GetProjectionMatrix(aspect);
+    var clipSpacePos = new Vector4(worldPos, 1.0f) * viewProj;
+    
+    if (clipSpacePos.W > 0.1f) // Behind camera check
+    {
+        var ndc = clipSpacePos.Xyz / clipSpacePos.W;
+        if (ndc.Z >= -1.0f && ndc.Z <= 1.0f)
+        {
+            float screenX = (ndc.X + 1.0f) / 2.0f * halfWidth;
+            float screenY = (1.0f - ndc.Y) / 2.0f * window.ClientSize.Y;
+            
+            var drawList = ImGuiNET.ImGui.GetBackgroundDrawList();
+            drawList.AddText(new System.Numerics.Vector2(screenX, screenY), 0xFF00FFFF, text); // Yellow-ish
+        }
+    }
+}
+
+// ============================================================
+// 16. START
 // ============================================================
 
 Console.WriteLine(
     "Starting render loop..."
 );
-
 
 window.Run();
 

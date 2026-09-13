@@ -14,6 +14,8 @@ public class Cube
     public Vector3 Scale { get; set; } = Vector3.One;
 
     public Vector3 Rotation { get; set; } = Vector3.Zero;
+    
+    public Matrix4? TransformOverride { get; set; } = null;
 
     public Vector3 Color { get; set; } =
         new Vector3(0.5f, 0.5f, 0.5f);
@@ -126,7 +128,7 @@ public class Cube
 
     public void Draw(Shader shader)
     {
-        Matrix4 model =
+        Matrix4 model = TransformOverride ?? (
             Matrix4.CreateScale(Scale) *
             Matrix4.CreateRotationX(
                 MathHelper.DegreesToRadians(Rotation.X)
@@ -137,8 +139,7 @@ public class Cube
             Matrix4.CreateRotationZ(
                 MathHelper.DegreesToRadians(Rotation.Z)
             ) *
-            Matrix4.CreateTranslation(Position);
-
+            Matrix4.CreateTranslation(Position));
 
         shader.SetMatrix4(
             "model",
