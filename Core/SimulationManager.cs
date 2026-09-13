@@ -161,7 +161,7 @@ public sealed class SimulationManager
                     {
                         if (!arm.IsPicking)
                         {
-                            arm.StartPicking();
+                            arm.StartPicking(waste.Position);
                             picked = true;
                             break;
                         }
