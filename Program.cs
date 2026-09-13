@@ -1239,10 +1239,11 @@ window.RenderFrame += args =>
 
 
     // ========================================================
-    // 3D SCENE (Left Half Viewport)
+    // 3D SCENE (Left 75% Viewport)
     // ========================================================
     
-    GL.Viewport(0, 0, window.ClientSize.X / 2, window.ClientSize.Y);
+    int simWidth = (int)(window.ClientSize.X * 0.75f);
+    GL.Viewport(0, 0, simWidth, window.ClientSize.Y);
 
     if (
         shader != null &&
@@ -1256,7 +1257,7 @@ window.RenderFrame += args =>
         // ====================================================
 
         float aspectRatio =
-            (window.Size.X / 2.0f) /
+            simWidth /
             (float)window.Size.Y;
 
 
@@ -1547,12 +1548,13 @@ window.RenderFrame += args =>
 // ============================================================
 void DrawDashboard()
 {
-    float halfWidth = window.ClientSize.X / 2.0f;
+    float simWidth = window.ClientSize.X * 0.75f;
+    float uiWidth = window.ClientSize.X - simWidth;
     float height = window.ClientSize.Y;
 
     // A simple Digital Twin overlay panel
-    ImGuiNET.ImGui.SetNextWindowPos(new System.Numerics.Vector2(halfWidth, 0), ImGuiNET.ImGuiCond.Always);
-    ImGuiNET.ImGui.SetNextWindowSize(new System.Numerics.Vector2(halfWidth, height), ImGuiNET.ImGuiCond.Always);
+    ImGuiNET.ImGui.SetNextWindowPos(new System.Numerics.Vector2(simWidth, 0), ImGuiNET.ImGuiCond.Always);
+    ImGuiNET.ImGui.SetNextWindowSize(new System.Numerics.Vector2(uiWidth, height), ImGuiNET.ImGuiCond.Always);
     
     // Custom styling based on design_theory
     ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.WindowBg, new System.Numerics.Vector4(0.02f, 0.05f, 0.08f, 1.0f));
@@ -1647,8 +1649,8 @@ void DrawDashboard()
 
 void DrawAnnotation(Vector3 worldPos, string text)
 {
-    float halfWidth = window.ClientSize.X / 2.0f;
-    float aspect = halfWidth / (float)window.ClientSize.Y;
+    float simWidth = window.ClientSize.X * 0.75f;
+    float aspect = simWidth / (float)window.ClientSize.Y;
     var viewProj = camera.GetViewMatrix() * camera.GetProjectionMatrix(aspect);
     var clipSpacePos = new Vector4(worldPos, 1.0f) * viewProj;
     
@@ -1657,7 +1659,7 @@ void DrawAnnotation(Vector3 worldPos, string text)
         var ndc = clipSpacePos.Xyz / clipSpacePos.W;
         if (ndc.Z >= -1.0f && ndc.Z <= 1.0f)
         {
-            float screenX = (ndc.X + 1.0f) / 2.0f * halfWidth;
+            float screenX = (ndc.X + 1.0f) / 2.0f * simWidth;
             float screenY = (1.0f - ndc.Y) / 2.0f * window.ClientSize.Y;
             
             var drawList = ImGuiNET.ImGui.GetBackgroundDrawList();
