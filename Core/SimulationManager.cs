@@ -18,6 +18,29 @@ public sealed class SimulationManager
     
     public IReadOnlyList<WasteObject> ActiveWaste => _activeWaste;
     
+    // Global UI State inputs
+    public bool SensorDepth { get; set; } = true;
+    public bool SensorNir { get; set; } = true;
+    public bool SensorLoadCell { get; set; } = true;
+    public bool SensorInductive { get; set; } = true;
+    public bool SensorCapacitive { get; set; } = true;
+
+    public float AIConfidence 
+    {
+        get 
+        {
+            float conf = 99.9f;
+            if (!SensorLoadCell) conf -= 35.7f;
+            if (!SensorNir) conf -= 15.0f;
+            if (!SensorDepth) conf -= 10.0f;
+            if (!SensorInductive) conf -= 5.0f;
+            if (!SensorCapacitive) conf -= 5.0f;
+            return MathF.Max(0.0f, conf);
+        }
+    }
+    
+    public int ItemsProcessed { get; private set; } = 0;
+    
     public SimulationManager(UConveyorPath path, ConveyorParameters parameters, RoboticArm[] arms)
     {
         _path = path;
@@ -58,7 +81,24 @@ public sealed class SimulationManager
                 // Simple logic: Remove Plastic, Keep Cardboard/Paper/Metal (as an example)
                 if (waste.Type == WasteType.PlasticBottle || waste.Type == WasteType.PlasticContainer)
                 {
-                    waste.EvalState = WasteObject.EvaluationState.Remove;
+                    if (waste.HasHiddenHazard)
+                    {
+                        // HIDDEN HAZARD LOGIC (Stone in bag)
+                        if (SensorLoadCell)
+                        {
+                            // Load cell is active: density anomaly detected, correctly mark as Remove (Red)
+                            waste.EvalState = WasteObject.EvaluationState.Remove;
+                        }
+                        else
+                        {
+                            // Load cell disabled: visual sensors see a normal plastic bag, mark as Safe (Green) - HAZARD MISSED
+                            waste.EvalState = WasteObject.EvaluationState.Keep;
+                        }
+                    }
+                    else
+                    {
+                        waste.EvalState = WasteObject.EvaluationState.Remove;
+                    }
                 }
                 else
                 {
@@ -87,6 +127,7 @@ public sealed class SimulationManager
                 // Regardless of whether an arm picked it, we remove it from the belt 
                 // to simulate it being processed or falling off the end.
                 _activeWaste.RemoveAt(i);
+                ItemsProcessed++;
             }
         }
     }
@@ -97,6 +138,14 @@ public sealed class SimulationManager
         var types = Enum.GetValues<WasteType>();
         WasteType randomType = types[_rng.Next(types.Length)];
         
+        // Force plastic sometimes to show the hazard logic
+        bool isHiddenHazard = false;
+        if (_rng.NextDouble() < 0.2) // 20% chance of hidden hazard
+        {
+            randomType = WasteType.PlasticBottle; // Or PlasticContainer
+            isHiddenHazard = true;
+        }
+
         // Random slight lateral offset (-0.3 to 0.3)
         float lateralOffset = (float)(_rng.NextDouble() * 0.6 - 0.3);
         
@@ -110,7 +159,8 @@ public sealed class SimulationManager
             0.0f, // Start at distance 0
             lateralOffset,
             1.0f, // Scale
-            baseYaw
+            baseYaw,
+            isHiddenHazard
         );
         
         _activeWaste.Add(waste);
