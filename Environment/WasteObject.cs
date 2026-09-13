@@ -58,6 +58,9 @@ public sealed class WasteObject
 
     public WasteType Type { get; }
     
+    public bool HasHiddenHazard { get; }
+    
+
     public EvaluationState EvalState { get; set; } = EvaluationState.Pending;
 
     public float Distance =>
@@ -69,13 +72,17 @@ public sealed class WasteObject
         float startDistance,
         float lateralOffset,
         float scale,
-        float baseYaw)
+        float baseYaw,
+        bool hasHiddenHazard = false)
     {
         _path =
             path;
 
         Type =
             type;
+
+        HasHiddenHazard = 
+            hasHiddenHazard;
 
         _distance =
             startDistance;
@@ -94,10 +101,11 @@ public sealed class WasteObject
         UpdateTransform();
     }
 
-    public WasteObject(UConveyorPath path, WasteType wasteType, float startDistance, float yaw)
+    public WasteObject(UConveyorPath path, WasteType wasteType, float startDistance, float yaw, bool hasHiddenHazard = false)
     {
         _path = path;
-        this.wasteType = wasteType;
+        Type = wasteType;
+        HasHiddenHazard = hasHiddenHazard;
         this.startDistance = startDistance;
         this.yaw = yaw;
     }

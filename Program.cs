@@ -110,7 +110,6 @@ bool sensorLoadCell = true;
 bool sensorInductive = true;
 bool sensorCapacitive = true;
 bool isRunning = true;
-float aiConfidence = 99.9f;
 // ============================================================
 // 7. ENVIRONMENT
 // ============================================================
@@ -1239,10 +1238,11 @@ window.RenderFrame += args =>
 
 
     // ========================================================
-    // 3D SCENE (Left Half Viewport)
+    // 3D SCENE (Left 75% Viewport)
     // ========================================================
     
-    GL.Viewport(0, 0, window.ClientSize.X / 2, window.ClientSize.Y);
+    int simWidth = (int)(window.ClientSize.X * 0.75f);
+    GL.Viewport(0, 0, simWidth, window.ClientSize.Y);
 
     if (
         shader != null &&
@@ -1256,7 +1256,7 @@ window.RenderFrame += args =>
         // ====================================================
 
         float aspectRatio =
-            (window.Size.X / 2.0f) /
+            simWidth /
             (float)window.Size.Y;
 
 
@@ -1547,12 +1547,29 @@ window.RenderFrame += args =>
 // ============================================================
 void DrawDashboard()
 {
-    float halfWidth = window.ClientSize.X / 2.0f;
+    float simWidth = window.ClientSize.X * 0.75f;
+    float uiWidth = window.ClientSize.X - simWidth;
     float height = window.ClientSize.Y;
+    
+    // Update SimulationManager with UI states
+    if (simulationManager != null)
+    {
+        simulationManager.SensorDepth = sensorDepth;
+        simulationManager.SensorNir = sensorNir;
+        simulationManager.SensorLoadCell = sensorLoadCell;
+        simulationManager.SensorInductive = sensorInductive;
+        simulationManager.SensorCapacitive = sensorCapacitive;
+    }
+    
+    float aiConfidence = simulationManager != null ? simulationManager.AIConfidence : 0f;
+    int itemsProcessed = simulationManager != null ? simulationManager.ItemsProcessed : 0;
+    
+    // Calculate simulated throughput
+    float throughput = isRunning ? (120f * (aiConfidence / 100f)) : 0f;
 
     // A simple Digital Twin overlay panel
-    ImGuiNET.ImGui.SetNextWindowPos(new System.Numerics.Vector2(halfWidth, 0), ImGuiNET.ImGuiCond.Always);
-    ImGuiNET.ImGui.SetNextWindowSize(new System.Numerics.Vector2(halfWidth, height), ImGuiNET.ImGuiCond.Always);
+    ImGuiNET.ImGui.SetNextWindowPos(new System.Numerics.Vector2(simWidth, 0), ImGuiNET.ImGuiCond.Always);
+    ImGuiNET.ImGui.SetNextWindowSize(new System.Numerics.Vector2(uiWidth, height), ImGuiNET.ImGuiCond.Always);
     
     // Custom styling based on design_theory
     ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.WindowBg, new System.Numerics.Vector4(0.02f, 0.05f, 0.08f, 1.0f));
@@ -1573,10 +1590,7 @@ void DrawDashboard()
         ImGuiNET.ImGui.Text("    +------ conveyor --------+--------------+-->");
         ImGuiNET.ImGui.Spacing();
         
-        if (!sensorLoadCell) aiConfidence = 64.2f;
-        else aiConfidence = 99.9f;
-        
-        ImGuiNET.ImGui.Text($"  Throughput: {(isRunning ? "120/m" : "0/m")}      AI Confidence: {aiConfidence:F1}%%");
+        ImGuiNET.ImGui.Text($"  Throughput: {(isRunning ? $"{throughput:F1}/m" : "0/m")}      AI Confidence: {aiConfidence:F1}%%");
         ImGuiNET.ImGui.Spacing();
         ImGuiNET.ImGui.Separator();
         
@@ -1598,22 +1612,21 @@ void DrawDashboard()
         
         ImGuiNET.ImGui.NextColumn();
         
-        ImGuiNET.ImGui.Text("AI TUTOR");
-        ImGuiNET.ImGui.Spacing();
-        if (sensorLoadCell)
-        {
-            ImGuiNET.ImGui.TextWrapped("\"Welcome to the SMART-SEG Sensor Lab.\"");
-            ImGuiNET.ImGui.TextWrapped("\"Currently, all 5 sensors are active and the AI Confidence is at 99.9%.\"");
-            ImGuiNET.ImGui.TextWrapped("\"To begin the experiment, try turning off the Load Cell (Mass) sensor using the controls on the left.\"");
-        }
-        else
+        ImGuiNET.ImGui.Text($"AI Confidence: {aiConfidence:F1}%");
+        ImGuiNET.ImGui.Text($"Throughput: {throughput:F1} items/min");
+        ImGuiNET.ImGui.Text($"Total Processed: {itemsProcessed}");
+        
+        ImGuiNET.ImGui.Separator();
+        
+        // 4. Dynamic AI Tutor Panel
+        ImGuiNET.ImGui.Text("AI Tutor Chat:");
+        ImGuiNET.ImGui.BeginChild("TutorChat", new System.Numerics.Vector2(0, 150), ImGuiNET.ImGuiChildFlags.Border);
+        if (!sensorLoadCell)
         {
             if (isRunning)
             {
-                ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1.0f, 0.4f, 0.4f, 1.0f), "> System Running...");
-                ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1.0f, 0.4f, 0.4f, 1.0f), "> Hazard Missed! (Stone in bag)");
-                ImGuiNET.ImGui.Spacing();
-                ImGuiNET.ImGui.TextWrapped("\"Notice how AI Confidence dropped to 64%? Without mass data, the system cannot compute density. It just sees the plastic bag and thinks it's safe.\"");
+                ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1, 0.4f, 0.4f, 1), "[!] System Running... Hazard Missed! (Stone in bag)");
+                ImGuiNET.ImGui.TextWrapped("AI Tutor: Without the Load Cell, I cannot compute physical mass. Density estimation is offline, meaning hidden dense objects inside plastic will evade the AI bounding box!");
             }
             else
             {
@@ -1622,7 +1635,13 @@ void DrawDashboard()
                 ImGuiNET.ImGui.TextWrapped("\"Before you hit Run, what do you think will happen to our accuracy on hidden hazards (like stones in plastic bags)?\"");
             }
         }
+        else
+        {
+            ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.4f, 1, 0.4f, 1), "[OK] System Nominal");
+            ImGuiNET.ImGui.TextWrapped("AI Tutor: All sensor modalities are nominal. The AI is computing optimal pick paths with high confidence.");
+        }
         
+        ImGuiNET.ImGui.EndChild();
         ImGuiNET.ImGui.Columns(1);
         ImGuiNET.ImGui.End();
         ImGuiNET.ImGui.PopStyleColor(2);
@@ -1647,8 +1666,8 @@ void DrawDashboard()
 
 void DrawAnnotation(Vector3 worldPos, string text)
 {
-    float halfWidth = window.ClientSize.X / 2.0f;
-    float aspect = halfWidth / (float)window.ClientSize.Y;
+    float simWidth = window.ClientSize.X * 0.75f;
+    float aspect = simWidth / (float)window.ClientSize.Y;
     var viewProj = camera.GetViewMatrix() * camera.GetProjectionMatrix(aspect);
     var clipSpacePos = new Vector4(worldPos, 1.0f) * viewProj;
     
@@ -1657,7 +1676,7 @@ void DrawAnnotation(Vector3 worldPos, string text)
         var ndc = clipSpacePos.Xyz / clipSpacePos.W;
         if (ndc.Z >= -1.0f && ndc.Z <= 1.0f)
         {
-            float screenX = (ndc.X + 1.0f) / 2.0f * halfWidth;
+            float screenX = (ndc.X + 1.0f) / 2.0f * simWidth;
             float screenY = (1.0f - ndc.Y) / 2.0f * window.ClientSize.Y;
             
             var drawList = ImGuiNET.ImGui.GetBackgroundDrawList();
