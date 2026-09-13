@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SMART-SEG | Segregation Overview</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">SS</span><div><strong>SMART-SEG</strong><small>NTPC · Netra Unit #1</small></div></div>
+    <div class="nav-group"><label>MONITORING</label><button class="nav active" data-view="Overview">▦ <span>Overview</span></button></div>
+    <div class="nav-group reference"><label>REFERENCE</label><button class="nav" data-view="Knowledge">▥ <span>Knowledge</span></button><button class="nav" data-view="Configuration">⚙ <span>Configuration</span></button></div>
+    <div class="sidebar-footer"><span>Line status <b class="pill green">● Running</b></span><span>SMART-SEG v1.0 <b class="settings">☼</b></span></div>
+  </aside>
+
+  <main class="app-shell">
+    <header class="topbar"><div><h1>Segregation Overview</h1><p>Live multi-sensor fusion &amp; hazard classification</p></div><div class="top-actions"><span class="mode">MOCK SENSORS</span><span class="pill green" id="connection">● CONNECTED</span><time id="clock"></time></div></header>
+    <section class="content">
+      <div class="status-strip"><div><b>●</b> VISION<strong>ONLINE</strong></div><div><b>●</b> TOF DEPTH<strong>ONLINE</strong></div><div><b>●</b> NIR SCANNER<strong>ONLINE</strong></div><div class="active-status"><b>●</b> AI ENGINE<strong>ACTIVE</strong></div><div><b>●</b> INTERLOCK<strong>CLOSED</strong></div><div><b>●</b> DIVERTER<strong>READY</strong></div></div>
+      <div class="metrics"><article class="metric blue"><label>TOTAL PROCESSED</label><strong id="processed">105</strong><span>items</span><small>13 on belt <i>+1</i></small><div class="sparkline"><em></em></div></article><article class="metric green"><label>● SAFE - RDF</label><strong id="safe">51</strong><span>items</span><small>73.3% of stream passed</small><div class="sparkline"><em></em></div></article><article class="metric red"><label>● HAZARD DIVERTED</label><strong id="hazard">43</strong><span>items</span><small>Routed to reject chute</small><div class="sparkline"><em></em></div></article><article class="metric blue"><label>BELT SPEED</label><strong id="beltSpeed">0.70</strong><span>m/s</span><small><i>Normal</i> range 0.4 – 0.7</small><div class="line"></div></article><article class="metric blue"><label>THROUGHPUT</label><strong id="throughput">121</strong><span>items/min</span><small>51 passed · 43 diverted · 30 s avg</small><div class="pulse"></div></article></div>
+      <section class="spec-card"><div class="panel-heading"><div><b>CONVEYOR SPECIFICATIONS</b><small>Physical model used by the digital twin</small></div><span class="reference-tag">Reference</span></div><div class="spec-values"><div><label>LENGTH</label><strong>10.0 <small>m</small></strong></div><div><label>WIDTH</label><strong>1.4 <small>m</small></strong></div><div><label>NOMINAL SPEED</label><strong>0.7 <small>m/s</small></strong></div></div></section>
+
+      <div class="workspace-grid">
+        <section class="twin-panel"><div class="panel-heading"><div><b>● CONVEYOR · DIGITAL TWIN</b><small>Existing OpenTK simulation renderer</small></div><div><button class="outline">Vision feed</button><button class="outline">Sensor suite</button></div></div><div class="twin-placeholder"><span>EXISTING CONVEYOR DIGITAL TWIN</span><small>The live OpenTK conveyor simulation remains in the desktop twin window.</small></div><div class="legend"><span><b class="dot green-bg"></b> SAFE → RDF chute</span><span><b class="dot red-bg"></b> HAZARD → reject</span><span><b class="dot blue-bg"></b> Scan zone 1.0–1.5 m</span><span><b class="dot gold-bg"></b> Diverter 2.2 m</span></div><div class="decision-feed"><div class="panel-heading"><b>DECISION FEED</b><button class="outline">Full audit log</button></div><div class="feed-row safe-row"><b>SAFE</b> Wood / Paper <time>9:22:15 PM</time></div><div class="feed-row hazard-row"><b>HAZARD</b> Wet Organic Waste <time>9:21:55 PM</time></div><div class="feed-row hazard-row"><b>HAZARD</b> Tire (metal wire) <time>9:21:39 PM</time></div><div class="feed-row hazard-row"><b>HAZARD</b> Plastic Bag (organic) <time>9:21:33 PM</time></div></div></section>
+
+        <aside class="control-column"><section class="card inject"><div class="panel-heading"><b>INJECT WASTE ITEM</b><span class="manual">Manual</span></div><div class="waste-grid" id="wasteGrid"><button>■ Stone / Concrete</button><button>■ Tire (metal wire)</button><button>■ Thick Glass</button><button>■ Plastic Bag (organic)</button><button>■ Plastic Bag (stone hidden!)</button><button>■ Wet Organic Waste</button><button>■ Metal Scrap</button><button>■ Wood / Paper</button><button>■ Lithium Battery</button><button>■ Textile Scrap</button><button>■ Ceramic Plate</button><button>■ Procedural Anomaly</button></div></section>
+          <section class="card classification"><div class="panel-heading"><b>◉ CURRENT CLASSIFICATION</b><span class="ai-tag">AI</span></div><div class="classification-body"><strong>✓ SAFE — KEEP ON BELT</strong><p id="classification">Wood / Paper classified as SAFE with strong polymer signature.</p><b class="confidence">78.0%<small>CONFIDENCE</small></b></div><div class="confidence-bar"><i></i></div></section>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

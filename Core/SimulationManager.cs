@@ -7,6 +7,7 @@ namespace AISEG.DigitalTwin.Core;
 
 public sealed class SimulationManager
 {
+    private readonly object _sync = new();
     private readonly UConveyorPath _path;
     private readonly ConveyorParameters _parameters;
     
@@ -40,6 +41,13 @@ public sealed class SimulationManager
     }
     
     public int ItemsProcessed { get; private set; } = 0;
+    public int SafeItems { get; private set; } = 0;
+    public int HazardItems { get; private set; } = 0;
+    public float ConveyorLength => _parameters.Length;
+    public float ConveyorWidth => _parameters.Width;
+    public float ConveyorSpeed => _parameters.Speed;
+    public bool IsRunning => _parameters.IsRunning;
+    public int ActiveItemCount { get { lock (_sync) return _activeWaste.Count; } }
     
     public SimulationManager(UConveyorPath path, ConveyorParameters parameters, RoboticArm[] arms)
     {
@@ -49,6 +57,42 @@ public sealed class SimulationManager
     }
     
     public void Update(double deltaTime)
+    {
+        lock (_sync)
+        {
+            UpdateCore(deltaTime);
+        }
+    }
+
+    public void SetRunning(bool isRunning)
+    {
+        lock (_sync)
+        {
+            _parameters.IsRunning = isRunning;
+        }
+    }
+
+    public void Reset()
+    {
+        lock (_sync)
+        {
+            _activeWaste.Clear();
+            _timeSinceLastSpawn = 0.0f;
+            ItemsProcessed = 0;
+            SafeItems = 0;
+            HazardItems = 0;
+        }
+    }
+
+    public void InjectWaste()
+    {
+        lock (_sync)
+        {
+            SpawnWaste();
+        }
+    }
+
+    private void UpdateCore(double deltaTime)
     {
         if (!_parameters.IsRunning)
             return;
@@ -126,6 +170,10 @@ public sealed class SimulationManager
                 
                 // Regardless of whether an arm picked it, we remove it from the belt 
                 // to simulate it being processed or falling off the end.
+                if (waste.EvalState == WasteObject.EvaluationState.Remove)
+                    HazardItems++;
+                else
+                    SafeItems++;
                 _activeWaste.RemoveAt(i);
                 ItemsProcessed++;
             }
