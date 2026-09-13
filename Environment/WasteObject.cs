@@ -857,6 +857,16 @@ public sealed class WasteObject
         UpdateTransform();
     }
 
+    public Vector3 Position
+    {
+        get
+        {
+            if (_cubeParts.Count > 0)
+                return _cubeParts[0].Position;
+            return Vector3.Zero;
+        }
+    }
+
     private void UpdateTransform()
     {
         UConveyorPoint point =

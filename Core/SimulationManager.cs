@@ -10,6 +10,8 @@ public sealed class SimulationManager
     private readonly UConveyorPath _path;
     private readonly ConveyorParameters _parameters;
     
+    public ConveyorParameters Parameters => _parameters;
+    
     private readonly List<WasteObject> _activeWaste = new();
     private readonly RoboticArm[] _arms;
     
@@ -40,6 +42,10 @@ public sealed class SimulationManager
     }
     
     public int ItemsProcessed { get; private set; } = 0;
+    public int HazardsMissed { get; private set; } = 0;
+    public int HazardsDetected { get; private set; } = 0;
+    public float SpawnInterval { get; set; } = 2.5f; // metres of belt travel between spawns
+    public float ElapsedTime { get; private set; } = 0f;
     
     public SimulationManager(UConveyorPath path, ConveyorParameters parameters, RoboticArm[] arms)
     {
@@ -58,8 +64,10 @@ public sealed class SimulationManager
         // 1. Spawning Logic
         _timeSinceLastSpawn += dt;
         
-        // Spawn a new waste object roughly every 2.5 meters of belt travel
-        float spawnInterval = 2.5f / MathF.Max(0.1f, MathF.Abs(_parameters.Velocity));
+        ElapsedTime += dt;
+        
+        // Spawn a new waste object based on configurable spawn interval
+        float spawnInterval = SpawnInterval / MathF.Max(0.1f, MathF.Abs(_parameters.Velocity));
         
         if (_timeSinceLastSpawn > spawnInterval)
         {
@@ -86,13 +94,13 @@ public sealed class SimulationManager
                         // HIDDEN HAZARD LOGIC (Stone in bag)
                         if (SensorLoadCell)
                         {
-                            // Load cell is active: density anomaly detected, correctly mark as Remove (Red)
                             waste.EvalState = WasteObject.EvaluationState.Remove;
+                            HazardsDetected++;
                         }
                         else
                         {
-                            // Load cell disabled: visual sensors see a normal plastic bag, mark as Safe (Green) - HAZARD MISSED
                             waste.EvalState = WasteObject.EvaluationState.Keep;
+                            HazardsMissed++;
                         }
                     }
                     else
@@ -117,7 +125,7 @@ public sealed class SimulationManager
                     {
                         if (!arm.IsPicking)
                         {
-                            arm.StartPicking();
+                            arm.StartPicking(waste.Position);
                             picked = true;
                             break;
                         }
@@ -164,6 +172,16 @@ public sealed class SimulationManager
         );
         
         _activeWaste.Add(waste);
+    }
+    
+    public void Reset()
+    {
+        _activeWaste.Clear();
+        _timeSinceLastSpawn = 0f;
+        ItemsProcessed = 0;
+        HazardsMissed = 0;
+        HazardsDetected = 0;
+        ElapsedTime = 0f;
     }
     
     public void Draw(Shader shader)

@@ -110,6 +110,13 @@ bool sensorLoadCell = true;
 bool sensorInductive = true;
 bool sensorCapacitive = true;
 bool isRunning = true;
+float uiSpeed = 0.7f;
+float uiSpawnInterval = 2.5f;
+
+// Monte Carlo state
+var mcEngine = new MonteCarloEngine();
+MonteCarloEngine.SimulationResult? mcResult = null;
+int mcTrialCount = 500;
 // ============================================================
 // 7. ENVIRONMENT
 // ============================================================
@@ -740,11 +747,11 @@ window.Load += () =>
     roboticArms = new RoboticArm[]
     {
         new RoboticArm(
-            new Vector3(endPoint.Position.X, 0.0f, endPoint.Position.Y + 0.8f), 
+            new Vector3(endPoint.Position.X, 0.0f, endPoint.Position.Y + 1.3f), 
             180.0f
         ),
         new RoboticArm(
-            new Vector3(endPoint.Position.X, 0.0f, endPoint.Position.Y - 0.8f), 
+            new Vector3(endPoint.Position.X, 0.0f, endPoint.Position.Y - 1.3f), 
             0.0f
         )
     };
@@ -1231,18 +1238,15 @@ window.RenderFrame += args =>
 
 
     // ========================================================
-    // BACKGROUND
-    // ========================================================
-
-    background?.Draw();
-
-
-    // ========================================================
-    // 3D SCENE (Left 75% Viewport)
+    // 3D SCENE (Right 75% Viewport)
     // ========================================================
     
     int simWidth = (int)(window.ClientSize.X * 0.75f);
-    GL.Viewport(0, 0, simWidth, window.ClientSize.Y);
+    int uiWidth = window.ClientSize.X - simWidth;
+    GL.Viewport(uiWidth, 0, simWidth, window.ClientSize.Y);
+
+    // BACKGROUND (drawn inside the 3D viewport only)
+    background?.Draw();
 
     if (
         shader != null &&
@@ -1522,8 +1526,9 @@ window.RenderFrame += args =>
 
 
     // ========================================================
-    // UI OVERLAY / ANNOTATIONS
+    // UI OVERLAY / ANNOTATIONS (restore full viewport for ImGui)
     // ========================================================
+    GL.Viewport(0, 0, window.ClientSize.X, window.ClientSize.Y);
     DrawDashboard();
 
     ImGuiNET.ImGui.Render();
@@ -1551,7 +1556,7 @@ void DrawDashboard()
     float uiWidth = window.ClientSize.X - simWidth;
     float height = window.ClientSize.Y;
     
-    // Update SimulationManager with UI states
+    // Sync UI state into SimulationManager
     if (simulationManager != null)
     {
         simulationManager.SensorDepth = sensorDepth;
@@ -1559,44 +1564,78 @@ void DrawDashboard()
         simulationManager.SensorLoadCell = sensorLoadCell;
         simulationManager.SensorInductive = sensorInductive;
         simulationManager.SensorCapacitive = sensorCapacitive;
+        simulationManager.Parameters.Speed = uiSpeed;
+        simulationManager.Parameters.IsRunning = isRunning;
+        simulationManager.SpawnInterval = uiSpawnInterval;
     }
     
-    float aiConfidence = simulationManager != null ? simulationManager.AIConfidence : 0f;
-    int itemsProcessed = simulationManager != null ? simulationManager.ItemsProcessed : 0;
+    float aiConfidence = simulationManager?.AIConfidence ?? 0f;
+    int itemsProcessed = simulationManager?.ItemsProcessed ?? 0;
+    int hazardsMissed = simulationManager?.HazardsMissed ?? 0;
+    int hazardsDetected = simulationManager?.HazardsDetected ?? 0;
+    float elapsed = simulationManager?.ElapsedTime ?? 0f;
+    int activeOnBelt = simulationManager?.ActiveWaste.Count ?? 0;
+    float currentSpeed = simulationManager?.Parameters.Speed ?? 0.7f;
     
     // Calculate simulated throughput
     float throughput = isRunning ? (120f * (aiConfidence / 100f)) : 0f;
 
-    // A simple Digital Twin overlay panel
-    ImGuiNET.ImGui.SetNextWindowPos(new System.Numerics.Vector2(simWidth, 0), ImGuiNET.ImGuiCond.Always);
+    // Position and size the dashboard panel (Left 25%)
+    ImGuiNET.ImGui.SetNextWindowPos(new System.Numerics.Vector2(0, 0), ImGuiNET.ImGuiCond.Always);
     ImGuiNET.ImGui.SetNextWindowSize(new System.Numerics.Vector2(uiWidth, height), ImGuiNET.ImGuiCond.Always);
     
-    // Custom styling based on design_theory
-    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.WindowBg, new System.Numerics.Vector4(0.02f, 0.05f, 0.08f, 1.0f));
+    // Dark industrial styling
+    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.WindowBg, new System.Numerics.Vector4(0.08f, 0.08f, 0.10f, 1.0f));
     ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.Text, new System.Numerics.Vector4(0.85f, 0.9f, 0.95f, 1.0f));
+    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.FrameBg, new System.Numerics.Vector4(0.15f, 0.15f, 0.20f, 1.0f));
+    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.SliderGrab, new System.Numerics.Vector4(0.3f, 0.7f, 1.0f, 1.0f));
+    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.Button, new System.Numerics.Vector4(0.2f, 0.2f, 0.3f, 1.0f));
+    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.ButtonHovered, new System.Numerics.Vector4(0.3f, 0.5f, 0.8f, 1.0f));
+    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.CheckMark, new System.Numerics.Vector4(0.3f, 0.9f, 0.4f, 1.0f));
+    ImGuiNET.ImGui.PushStyleColor(ImGuiNET.ImGuiCol.Separator, new System.Numerics.Vector4(0.3f, 0.3f, 0.4f, 0.6f));
     
-    if (ImGuiNET.ImGui.Begin("SMART-SEG Dashboard", ImGuiNET.ImGuiWindowFlags.NoCollapse | ImGuiNET.ImGuiWindowFlags.NoMove | ImGuiNET.ImGuiWindowFlags.NoResize | ImGuiNET.ImGuiWindowFlags.NoTitleBar))
+    if (ImGuiNET.ImGui.Begin("Dashboard Panel", ImGuiNET.ImGuiWindowFlags.NoCollapse | ImGuiNET.ImGuiWindowFlags.NoMove | ImGuiNET.ImGuiWindowFlags.NoResize | ImGuiNET.ImGuiWindowFlags.NoTitleBar))
     {
-        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.4f, 0.8f, 1.0f, 1.0f), "SMART-SEG       Simulation Lab       Module 1/3");
+        // ── HEADER ──
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.4f, 0.8f, 1.0f, 1.0f), "SMART-SEG  Digital Twin  Control Panel");
         ImGuiNET.ImGui.Separator();
-        
-        ImGuiNET.ImGui.Spacing();
-        ImGuiNET.ImGui.Text("          INTERACTIVE PROCESS FLOW");
         ImGuiNET.ImGui.Spacing();
         
-        // ASCII-like diagram using text
-        ImGuiNET.ImGui.Text("  HOPPER                SENSOR ARCH     DIVERTER");
-        ImGuiNET.ImGui.Text("    |                        |              |");
-        ImGuiNET.ImGui.Text("    +------ conveyor --------+--------------+-->");
-        ImGuiNET.ImGui.Spacing();
-        
-        ImGuiNET.ImGui.Text($"  Throughput: {(isRunning ? $"{throughput:F1}/m" : "0/m")}      AI Confidence: {aiConfidence:F1}%%");
+        // ── STATUS INDICATOR ──
+        if (isRunning)
+            ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.2f, 1.0f, 0.3f, 1.0f), "  STATUS: RUNNING");
+        else
+            ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1.0f, 0.6f, 0.2f, 1.0f), "  STATUS: PAUSED");
         ImGuiNET.ImGui.Spacing();
         ImGuiNET.ImGui.Separator();
+        ImGuiNET.ImGui.Spacing();
         
-        // Two columns
-        ImGuiNET.ImGui.Columns(2, "dashboard_columns", true);
-        ImGuiNET.ImGui.Text("SIMULATION CONTROLS");
+        // ── SIMULATION CONTROLS ──
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.6f, 0.8f, 1.0f, 1.0f), "SIMULATION CONTROLS");
+        ImGuiNET.ImGui.Spacing();
+        
+        // Run / Pause / Stop / Reset buttons
+        if (ImGuiNET.ImGui.Button("Run", new System.Numerics.Vector2(60, 0))) { isRunning = true; }
+        ImGuiNET.ImGui.SameLine();
+        if (ImGuiNET.ImGui.Button("Pause", new System.Numerics.Vector2(60, 0))) { isRunning = false; }
+        ImGuiNET.ImGui.SameLine();
+        if (ImGuiNET.ImGui.Button("Reset", new System.Numerics.Vector2(60, 0))) { simulationManager?.Reset(); isRunning = false; }
+        ImGuiNET.ImGui.Spacing();
+        
+        // Speed slider
+        ImGuiNET.ImGui.Text("Belt Speed (m/s)");
+        ImGuiNET.ImGui.SliderFloat("##speed", ref uiSpeed, 0.1f, 3.0f, "%.2f");
+        ImGuiNET.ImGui.Spacing();
+        
+        // Spawn rate slider
+        ImGuiNET.ImGui.Text("Spawn Interval (m)");
+        ImGuiNET.ImGui.SliderFloat("##spawn", ref uiSpawnInterval, 0.5f, 6.0f, "%.1f");
+        ImGuiNET.ImGui.Spacing();
+        ImGuiNET.ImGui.Separator();
+        ImGuiNET.ImGui.Spacing();
+        
+        // ── SENSOR SUITE ──
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.6f, 0.8f, 1.0f, 1.0f), "SENSOR SUITE");
         ImGuiNET.ImGui.Spacing();
         
         ImGuiNET.ImGui.Checkbox("3D Depth Vision", ref sensorDepth);
@@ -1604,48 +1643,81 @@ void DrawDashboard()
         ImGuiNET.ImGui.Checkbox("Load Cell (Mass)", ref sensorLoadCell);
         ImGuiNET.ImGui.Checkbox("Inductive Sensor", ref sensorInductive);
         ImGuiNET.ImGui.Checkbox("Capacitive Sensor", ref sensorCapacitive);
-        
         ImGuiNET.ImGui.Spacing();
-        if (ImGuiNET.ImGui.Button("Run")) { isRunning = true; if(simulationManager != null) typeof(SimulationManager).GetField("_parameters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(simulationManager, new ConveyorParameters{IsRunning=true}); }
-        ImGuiNET.ImGui.SameLine();
-        if (ImGuiNET.ImGui.Button("Pause")) { isRunning = false; if(simulationManager != null) typeof(SimulationManager).GetField("_parameters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(simulationManager, new ConveyorParameters{IsRunning=false}); }
-        
-        ImGuiNET.ImGui.NextColumn();
-        
-        ImGuiNET.ImGui.Text($"AI Confidence: {aiConfidence:F1}%");
-        ImGuiNET.ImGui.Text($"Throughput: {throughput:F1} items/min");
-        ImGuiNET.ImGui.Text($"Total Processed: {itemsProcessed}");
-        
         ImGuiNET.ImGui.Separator();
+        ImGuiNET.ImGui.Spacing();
         
-        // 4. Dynamic AI Tutor Panel
-        ImGuiNET.ImGui.Text("AI Tutor Chat:");
-        ImGuiNET.ImGui.BeginChild("TutorChat", new System.Numerics.Vector2(0, 150), ImGuiNET.ImGuiChildFlags.Border);
-        if (!sensorLoadCell)
+        // ── OUTPUT METRICS ──
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.6f, 0.8f, 1.0f, 1.0f), "OUTPUT METRICS");
+        ImGuiNET.ImGui.Spacing();
+        
+        // AI Confidence with color coding
+        var confColor = aiConfidence > 90f ? new System.Numerics.Vector4(0.2f, 1f, 0.3f, 1f) :
+                        aiConfidence > 60f ? new System.Numerics.Vector4(1f, 0.8f, 0.2f, 1f) :
+                                            new System.Numerics.Vector4(1f, 0.3f, 0.3f, 1f);
+        ImGuiNET.ImGui.Text("AI Confidence:"); ImGuiNET.ImGui.SameLine();
+        ImGuiNET.ImGui.TextColored(confColor, $"{aiConfidence:F1}%");
+        
+        ImGuiNET.ImGui.Text($"Throughput:       {throughput:F1} items/min");
+        ImGuiNET.ImGui.Text($"Belt Speed:       {currentSpeed:F2} m/s");
+        ImGuiNET.ImGui.Text($"Items Processed:  {itemsProcessed}");
+        ImGuiNET.ImGui.Text($"Active on Belt:   {activeOnBelt}");
+        ImGuiNET.ImGui.Text($"Elapsed Time:     {TimeSpan.FromSeconds(elapsed):mm\\:ss}");
+        ImGuiNET.ImGui.Spacing();
+        
+        // Hazard stats
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.2f, 1f, 0.3f, 1f), $"Hazards Detected: {hazardsDetected}");
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1f, 0.3f, 0.3f, 1f), $"Hazards Missed:   {hazardsMissed}");
+        ImGuiNET.ImGui.Spacing();
+        ImGuiNET.ImGui.Separator();
+        ImGuiNET.ImGui.Spacing();
+        
+        // ── MONTE CARLO SIMULATION ──
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.6f, 0.8f, 1.0f, 1.0f), "MONTE CARLO ANALYSIS");
+        ImGuiNET.ImGui.Spacing();
+        
+        ImGuiNET.ImGui.Text("Trials:"); ImGuiNET.ImGui.SameLine();
+        ImGuiNET.ImGui.SetNextItemWidth(80);
+        ImGuiNET.ImGui.InputInt("##mctrials", ref mcTrialCount, 100, 500);
+        if (mcTrialCount < 10) mcTrialCount = 10;
+        if (mcTrialCount > 10000) mcTrialCount = 10000;
+        
+        if (ImGuiNET.ImGui.Button("Run Monte Carlo", new System.Numerics.Vector2(-1, 0)))
         {
-            if (isRunning)
-            {
-                ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1, 0.4f, 0.4f, 1), "[!] System Running... Hazard Missed! (Stone in bag)");
-                ImGuiNET.ImGui.TextWrapped("AI Tutor: Without the Load Cell, I cannot compute physical mass. Density estimation is offline, meaning hidden dense objects inside plastic will evade the AI bounding box!");
-            }
-            else
-            {
-                ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.8f, 0.8f, 0.8f, 1.0f), "> User disabled Load Cell");
-                ImGuiNET.ImGui.Spacing();
-                ImGuiNET.ImGui.TextWrapped("\"Before you hit Run, what do you think will happen to our accuracy on hidden hazards (like stones in plastic bags)?\"");
-            }
+            mcResult = mcEngine.Run(
+                mcTrialCount, uiSpeed, uiSpawnInterval,
+                sensorDepth, sensorNir, sensorLoadCell,
+                sensorInductive, sensorCapacitive, 60f);
+        }
+        ImGuiNET.ImGui.Spacing();
+        
+        if (mcResult != null && mcResult.IsComplete)
+        {
+            ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.4f, 1f, 0.6f, 1f), $"Results ({mcResult.TrialCount} trials, 60s each)");
+            ImGuiNET.ImGui.Text($"Throughput:  {mcResult.MeanThroughput:F1} +/- {mcResult.StdDevThroughput:F1} /min");
+            ImGuiNET.ImGui.Text($"Detection:   {mcResult.MeanDetectionRate:F1} +/- {mcResult.StdDevDetectionRate:F1} %");
+            ImGuiNET.ImGui.Text($"Worst 5%%:   {mcResult.P95Throughput:F1} /min,  {mcResult.P95DetectionRate:F1} %%");
+            ImGuiNET.ImGui.Text($"Range:       {mcResult.MinDetectionRate:F1}%% - {mcResult.MaxDetectionRate:F1}%%");
+            ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(1f, 0.4f, 0.4f, 1f), $"Avg Missed:  {mcResult.MeanHazardsMissed:F1} /trial");
         }
         else
         {
-            ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.4f, 1, 0.4f, 1), "[OK] System Nominal");
-            ImGuiNET.ImGui.TextWrapped("AI Tutor: All sensor modalities are nominal. The AI is computing optimal pick paths with high confidence.");
+            ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.5f, 0.5f, 0.5f, 1f), "Press button to run analysis...");
         }
+        ImGuiNET.ImGui.Spacing();
+        ImGuiNET.ImGui.Separator();
+        ImGuiNET.ImGui.Spacing();
         
-        ImGuiNET.ImGui.EndChild();
-        ImGuiNET.ImGui.Columns(1);
+        // ── PROCESS FLOW DIAGRAM ──
+        ImGuiNET.ImGui.TextColored(new System.Numerics.Vector4(0.6f, 0.8f, 1.0f, 1.0f), "PROCESS FLOW");
+        ImGuiNET.ImGui.Spacing();
+        ImGuiNET.ImGui.Text("HOPPER   SENSOR ARCH   DIVERTER");
+        ImGuiNET.ImGui.Text("  |          |            |");
+        ImGuiNET.ImGui.Text("  +-- belt --+------------+->");
+        
         ImGuiNET.ImGui.End();
-        ImGuiNET.ImGui.PopStyleColor(2);
     }
+    ImGuiNET.ImGui.PopStyleColor(8);
     
     // Annotations
     if (sensorNodes != null && conveyor != null)
@@ -1676,7 +1748,8 @@ void DrawAnnotation(Vector3 worldPos, string text)
         var ndc = clipSpacePos.Xyz / clipSpacePos.W;
         if (ndc.Z >= -1.0f && ndc.Z <= 1.0f)
         {
-            float screenX = (ndc.X + 1.0f) / 2.0f * simWidth;
+            float uiWidth = window.ClientSize.X - simWidth;
+            float screenX = uiWidth + (ndc.X + 1.0f) / 2.0f * simWidth;
             float screenY = (1.0f - ndc.Y) / 2.0f * window.ClientSize.Y;
             
             var drawList = ImGuiNET.ImGui.GetBackgroundDrawList();
