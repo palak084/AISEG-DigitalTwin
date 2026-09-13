@@ -44,7 +44,7 @@ public sealed class UConveyorPath
         float beltWidth,
         float curveRadius,
         int straightSegments = 28,
-        int curveSegments = 32)
+        int curveSegments = 56)
     {
         BeltWidth = beltWidth;
         CurveRadius = curveRadius;

@@ -2,21 +2,23 @@
 using OpenTK.Windowing.Common;
 using OpenTK.Mathematics;
 using OpenTK.Graphics.OpenGL4;
+
 using Keys = OpenTK.Windowing.GraphicsLibraryFramework.Keys;
+using MouseButton = OpenTK.Windowing.GraphicsLibraryFramework.MouseButton;
 
 using AISEG.DigitalTwin.Core;
 using AISEG.DigitalTwin.Environment;
 using AISEG.DigitalTwin.Conveyor;
 
+
 // ============================================================
 // AI-SEG DIGITAL TWIN
 // PHASE 1
 //
-// Current objective:
-// 3D OpenGL environment + conveyor
-//
-// Next:
-// Waste Objects → Robots → Sensors → AI
+// 3D OpenGL Environment
+// Interactive Camera
+// Conveyor Simulation
+// Digital Twin Information Layer
 // ============================================================
 
 
@@ -31,7 +33,7 @@ var gameWindowSettings = new GameWindowSettings
 
 
 // ============================================================
-// 2. NATIVE WINDOW SETTINGS
+// 2. WINDOW SETTINGS
 // ============================================================
 
 var nativeWindowSettings = new NativeWindowSettings
@@ -41,7 +43,8 @@ var nativeWindowSettings = new NativeWindowSettings
         720
     ),
 
-    Title = "AI-SEG Digital Twin - Phase 1",
+    Title =
+        "AI-SEG Digital Twin - Phase 1",
 
     NumberOfSamples = 4
 };
@@ -51,10 +54,11 @@ var nativeWindowSettings = new NativeWindowSettings
 // 3. CREATE WINDOW
 // ============================================================
 
-using var window = new GameWindow(
-    gameWindowSettings,
-    nativeWindowSettings
-);
+using var window =
+    new GameWindow(
+        gameWindowSettings,
+        nativeWindowSettings
+    );
 
 
 // ============================================================
@@ -66,23 +70,48 @@ Camera camera =
 
 
 // ============================================================
-// 5. OBJECT REFERENCES
-//
-// OpenGL resources are created inside Load because the
-// OpenGL context must already exist.
+// 5. MOUSE STATE
+// ============================================================
+
+Vector2 lastMousePosition =
+    Vector2.Zero;
+
+bool leftMouseDragging =
+    false;
+
+bool rightMouseDragging =
+    false;
+
+
+// ============================================================
+// 6. OBJECT REFERENCES
 // ============================================================
 
 Shader? shader = null;
 
 Conveyor? conveyor = null;
 
-Cube? floor = null;
-
 BackgroundRenderer? background = null;
 
 
 // ============================================================
-// 6. VERTEX SHADER
+// 7. ENVIRONMENT
+// ============================================================
+
+List<Cube> environmentObjects =
+    new();
+
+
+// ============================================================
+// 8. INFORMATION SIGNS
+// ============================================================
+
+// List<InformationSign> informationSigns =
+//     new();
+
+
+// ============================================================
+// 9. VERTEX SHADER
 // ============================================================
 
 string vertexShaderSource = """
@@ -90,20 +119,33 @@ string vertexShaderSource = """
 #version 330 core
 
 layout (location = 0) in vec3 aPosition;
+
 layout (location = 1) in float aBeltCoordinate;
 
 uniform mat4 model;
+
 uniform mat4 view;
+
 uniform mat4 projection;
 
 out vec3 worldPosition;
+
 out float beltCoordinate;
 
 void main()
 {
-    vec4 world = model * vec4(aPosition, 1.0);
-    worldPosition = world.xyz;
-    beltCoordinate = aBeltCoordinate;
+    vec4 world =
+        model *
+        vec4(
+            aPosition,
+            1.0
+        );
+
+    worldPosition =
+        world.xyz;
+
+    beltCoordinate =
+        aBeltCoordinate;
 
     gl_Position =
         projection *
@@ -115,7 +157,7 @@ void main()
 
 
 // ============================================================
-// 7. FRAGMENT SHADER
+// 10. FRAGMENT SHADER
 // ============================================================
 
 string fragmentShaderSource = """
@@ -125,112 +167,400 @@ string fragmentShaderSource = """
 out vec4 FragColor;
 
 uniform vec3 objectColor;
+
 uniform vec3 lightDirection;
+
 uniform vec3 fillLightDirection;
+
 uniform vec3 viewPosition;
+
 uniform float ambientStrength;
+
 uniform float specularStrength;
+
 uniform float fillLightStrength;
+
 uniform float materialSpecular;
+
 uniform float materialShininess;
+
 uniform float floorPass;
+
 uniform float structurePass;
+
 uniform vec3 pointLightPositions[3];
+
 uniform vec3 pointLightColors[3];
+
 uniform float pointLightIntensities[3];
+
 uniform float pointLightLinear;
+
 uniform float pointLightQuadratic;
+
 uniform float beltMotionEnabled;
+
 uniform float beltMotionOffset;
 
 in vec3 worldPosition;
+
 in float beltCoordinate;
+
 
 void main()
 {
-    vec3 normal = normalize(cross(dFdx(worldPosition), dFdy(worldPosition)));
-    vec3 viewDirection = normalize(viewPosition - worldPosition);
+    // ========================================================
+    // SURFACE NORMAL
+    // ========================================================
 
-    vec3 light = normalize(lightDirection);
-    float diffuse = max(dot(normal, light), 0.0) * 1.35;
-    vec3 fillLight = normalize(fillLightDirection);
-    float fillDiffuse = max(dot(normal, fillLight), 0.0);
-    vec3 halfway = normalize(light + viewDirection);
-    float specular = pow(
-        max(dot(normal, halfway), 0.0),
-        materialShininess);
-    vec3 skyAmbient = vec3(0.18, 0.20, 0.24);
-    vec3 groundAmbient = vec3(0.08, 0.075, 0.065);
-    float hemisphere = normal.y * 0.5 + 0.5;
-    vec3 ambient = mix(groundAmbient, skyAmbient, hemisphere) * ambientStrength;
-    vec3 litColor = objectColor * (ambient + vec3(diffuse));
-    litColor += objectColor * fillLightStrength * fillDiffuse;
-    litColor += vec3(materialSpecular * specularStrength * specular);
+    vec3 normal =
+        normalize(
+            cross(
+                dFdx(worldPosition),
+                dFdy(worldPosition)
+            )
+        );
+
+
+    // ========================================================
+    // VIEW DIRECTION
+    // ========================================================
+
+    vec3 viewDirection =
+        normalize(
+            viewPosition -
+            worldPosition
+        );
+
+
+    // ========================================================
+    // MAIN LIGHT
+    // ========================================================
+
+    vec3 light =
+        normalize(
+            lightDirection
+        );
+
+    float diffuse =
+        max(
+            dot(
+                normal,
+                light
+            ),
+            0.0
+        );
+
+
+    // ========================================================
+    // FILL LIGHT
+    // ========================================================
+
+    vec3 fillLight =
+        normalize(
+            fillLightDirection
+        );
+
+    float fillDiffuse =
+        max(
+            dot(
+                normal,
+                fillLight
+            ),
+            0.0
+        );
+
+
+    // ========================================================
+    // SPECULAR
+    // ========================================================
+
+    vec3 halfway =
+        normalize(
+            light +
+            viewDirection
+        );
+
+    float specular =
+        pow(
+            max(
+                dot(
+                    normal,
+                    halfway
+                ),
+                0.0
+            ),
+            materialShininess
+        );
+
+
+    // ========================================================
+    // AMBIENT
+    // ========================================================
+
+    vec3 skyAmbient =
+        vec3(
+            0.20,
+            0.22,
+            0.25
+        );
+
+    vec3 groundAmbient =
+        vec3(
+            0.055,
+            0.055,
+            0.055
+        );
+
+
+    float hemisphere =
+        normal.y *
+        0.5 +
+        0.5;
+
+
+    vec3 ambient =
+        mix(
+            groundAmbient,
+            skyAmbient,
+            hemisphere
+        )
+        *
+        ambientStrength;
+
+
+    // ========================================================
+    // BASE LIGHTING
+    // ========================================================
+
+    vec3 litColor =
+        objectColor *
+        (
+            ambient +
+            vec3(diffuse)
+        );
+
+
+    litColor +=
+        objectColor *
+        fillLightStrength *
+        fillDiffuse;
+
+
+    litColor +=
+        vec3(
+            materialSpecular *
+            specularStrength *
+            specular
+        );
+
+
+    // ========================================================
+    // POINT LIGHTS
+    // ========================================================
 
     for (int i = 0; i < 3; i++)
     {
-        vec3 toPoint = pointLightPositions[i] - worldPosition;
-        float distanceToPoint = length(toPoint);
-        vec3 pointDirection = normalize(toPoint);
-        float attenuation = 1.0 / (1.0 +
-            pointLightLinear * distanceToPoint +
-            pointLightQuadratic * distanceToPoint * distanceToPoint);
-        float pointDiffuse = max(dot(normal, pointDirection), 0.0);
-        vec3 pointHalfway = normalize(pointDirection + viewDirection);
-        float pointSpecular = pow(
-            max(dot(normal, pointHalfway), 0.0),
-            48.0);
+        vec3 toPoint =
+            pointLightPositions[i] -
+            worldPosition;
 
-        litColor += objectColor * pointLightColors[i] *
-            pointLightIntensities[i] * attenuation * pointDiffuse;
-        litColor += pointLightColors[i] *
-            pointLightIntensities[i] * attenuation *
-            specularStrength * pointSpecular;
+        float distanceToPoint =
+            length(
+                toPoint
+            );
+
+        vec3 pointDirection =
+            normalize(
+                toPoint
+            );
+
+
+        float attenuation =
+            1.0 /
+            (
+                1.0 +
+                pointLightLinear *
+                distanceToPoint +
+                pointLightQuadratic *
+                distanceToPoint *
+                distanceToPoint
+            );
+
+
+        float pointDiffuse =
+            max(
+                dot(
+                    normal,
+                    pointDirection
+                ),
+                0.0
+            );
+
+
+        vec3 pointHalfway =
+            normalize(
+                pointDirection +
+                viewDirection
+            );
+
+
+        float pointSpecular =
+            pow(
+                max(
+                    dot(
+                        normal,
+                        pointHalfway
+                    ),
+                    0.0
+                ),
+                48.0
+            );
+
+
+        litColor +=
+            objectColor *
+            pointLightColors[i] *
+            pointLightIntensities[i] *
+            attenuation *
+            pointDiffuse;
+
+
+        litColor +=
+            pointLightColors[i] *
+            pointLightIntensities[i] *
+            attenuation *
+            specularStrength *
+            pointSpecular;
     }
 
-    float edgeHighlight = pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
-    litColor += vec3(0.10, 0.12, 0.14) * edgeHighlight;
-    float beltVariation = 1.0;
 
-    if (beltMotionEnabled > 0.5)
+    // ========================================================
+    // EDGE HIGHLIGHT
+    // ========================================================
+
+    float edgeHighlight =
+        pow(
+            1.0 -
+            max(
+                dot(
+                    normal,
+                    viewDirection
+                ),
+                0.0
+            ),
+            3.0
+        );
+
+
+    litColor +=
+        vec3(
+            0.07,
+            0.08,
+            0.09
+        )
+        *
+        edgeHighlight;
+
+
+    // ========================================================
+    // FLOOR CONTACT
+    // ========================================================
+
+    vec3 exposedColor =
+        litColor;
+
+
+    if (
+        floorPass > 0.5
+    )
     {
-        float pattern = sin((beltCoordinate - beltMotionOffset) * 240.0);
-        beltVariation = 0.985 + 0.015 * (0.5 + 0.5 * pattern);
+        float contact =
+            exp(
+                -worldPosition.y *
+                worldPosition.y *
+                18.0
+            );
+
+        exposedColor *=
+            1.0 -
+            0.10 *
+            contact;
     }
 
-    vec3 exposedColor = litColor * beltVariation * 1.15;
 
-    if (floorPass > 0.5)
+    // ========================================================
+    // STRUCTURAL DARKENING
+    // ========================================================
+
+    if (
+        structurePass > 0.5
+    )
     {
-        float nearestX = min(
-            min(abs(worldPosition.x + 3.7), abs(worldPosition.x + 1.85)),
-            min(abs(worldPosition.x), abs(worldPosition.x - 1.85)));
-        nearestX = min(nearestX, abs(worldPosition.x - 3.7));
-        float nearestZ = min(abs(abs(worldPosition.z) - 0.68),
-            abs(abs(worldPosition.z) - 2.12));
-        float contact = exp(-nearestX * nearestX * 18.0 -
-            nearestZ * nearestZ * 8.0);
-        exposedColor *= 1.0 - 0.22 * contact;
+        float lowerJoint =
+            exp(
+                -abs(
+                    worldPosition.y -
+                    1.0
+                )
+                *
+                12.0
+            );
+
+
+        float upperJoint =
+            exp(
+                -abs(
+                    worldPosition.y -
+                    1.18
+                )
+                *
+                18.0
+            );
+
+
+        exposedColor *=
+            1.0 -
+            0.08 *
+            max(
+                lowerJoint,
+                upperJoint
+            );
     }
 
-    if (structurePass > 0.5)
-    {
-        float lowerJoint = exp(-abs(worldPosition.y - 1.0) * 12.0);
-        float upperJoint = exp(-abs(worldPosition.y - 1.18) * 18.0);
-        exposedColor *= 1.0 - 0.10 * max(lowerJoint, upperJoint);
-    }
 
-    vec3 displayColor = vec3(1.0) - exp(-exposedColor);
-    displayColor = pow(displayColor, vec3(1.0 / 2.2));
+    // ========================================================
+    // TONE MAPPING
+    // ========================================================
 
-    FragColor = vec4(displayColor, 1.0);
+    vec3 displayColor =
+        vec3(1.0) -
+        exp(
+            -exposedColor
+        );
+
+
+    displayColor =
+        pow(
+            displayColor,
+            vec3(
+                1.0 / 2.2
+            )
+        );
+
+
+    FragColor =
+        vec4(
+            displayColor,
+            1.0
+        );
 }
 
 """;
 
 
 // ============================================================
-// 8. LOAD EVENT
+// 11. LOAD
 // ============================================================
 
 window.Load += () =>
@@ -253,18 +583,26 @@ window.Load += () =>
     // ========================================================
 
     Console.WriteLine(
-        "OpenGL Version: "
-        + GL.GetString(StringName.Version)
+        "OpenGL Version: " +
+        GL.GetString(
+            StringName.Version
+        )
     );
 
-    Console.WriteLine(
-        "GPU: "
-        + GL.GetString(StringName.Renderer)
-    );
 
     Console.WriteLine(
-        "GLSL: "
-        + GL.GetString(StringName.ShadingLanguageVersion)
+        "GPU: " +
+        GL.GetString(
+            StringName.Renderer
+        )
+    );
+
+
+    Console.WriteLine(
+        "GLSL: " +
+        GL.GetString(
+            StringName.ShadingLanguageVersion
+        )
     );
 
 
@@ -285,20 +623,21 @@ window.Load += () =>
     // ========================================================
 
     GL.ClearColor(
-        0.04f,
-        0.04f,
-        0.06f,
+        0.025f,
+        0.030f,
+        0.035f,
         1.0f
     );
 
 
     // ========================================================
-    // DEPTH TESTING
+    // DEPTH
     // ========================================================
 
     GL.Enable(
         EnableCap.DepthTest
     );
+
 
     GL.Enable(
         EnableCap.Multisample
@@ -306,43 +645,53 @@ window.Load += () =>
 
 
     // ========================================================
-    // CREATE SHADER
+    // SHADER
     // ========================================================
 
-    shader = new Shader(
-        vertexShaderSource,
-        fragmentShaderSource
-    );
-
-    background = new BackgroundRenderer();
+    shader =
+        new Shader(
+            vertexShaderSource,
+            fragmentShaderSource
+        );
 
 
     // ========================================================
-    // CREATE CONVEYOR PARAMETERS
+    // BACKGROUND
     // ========================================================
 
-    ConveyorParameters conveyorParameters =
+    background =
+        new BackgroundRenderer();
+
+
+    // ========================================================
+    // CONVEYOR PARAMETERS
+    // ========================================================
+
+    ConveyorParameters parameters =
         new ConveyorParameters();
 
 
-    // ========================================================
-    // DISPLAY CONVEYOR PARAMETERS
-    // ========================================================
-
     Console.WriteLine(
-        $"Conveyor Length: {conveyorParameters.Length} m"
+        $"Conveyor Length: " +
+        $"{parameters.Length} m"
     );
 
-    Console.WriteLine(
-        $"Conveyor Width: {conveyorParameters.Width} m"
-    );
 
     Console.WriteLine(
-        $"Conveyor Speed: {conveyorParameters.Speed} m/s"
+        $"Conveyor Width: " +
+        $"{parameters.Width} m"
     );
 
+
     Console.WriteLine(
-        $"Maximum Item Weight: {conveyorParameters.MaximumItemWeight} kg"
+        $"Conveyor Speed: " +
+        $"{parameters.Speed} m/s"
+    );
+
+
+    Console.WriteLine(
+        $"Maximum Item Weight: " +
+        $"{parameters.MaximumItemWeight} kg"
     );
 
 
@@ -352,32 +701,283 @@ window.Load += () =>
 
     conveyor =
         new Conveyor(
-            conveyorParameters
+            parameters
         );
 
-    floor = new Cube
-    {
-        Position = new Vector3(0.0f, -0.14f, 0.0f),
-        Scale = new Vector3(22.0f, 0.20f, 14.0f),
-        Color = new Vector3(0.22f, 0.23f, 0.24f),
-        IsFloor = true
-    };
 
+    // ========================================================
+    // OPEN FLOOR
+    // ========================================================
+
+    environmentObjects.Add(
+        new Cube
+        {
+            Position =
+                new Vector3(
+                    0.0f,
+                    -0.14f,
+                    0.0f
+                ),
+
+            Scale =
+                new Vector3(
+                    24.0f,
+                    0.20f,
+                    16.0f
+                ),
+
+            Color =
+                new Vector3(
+                    0.20f,
+                    0.21f,
+                    0.22f
+                ),
+
+            IsFloor = true
+        }
+    );
+
+
+    // ========================================================
+    // FLOOR SAFETY LINE - NORTH
+    // ========================================================
+
+    environmentObjects.Add(
+        new Cube
+        {
+            Position =
+                new Vector3(
+                    0.0f,
+                    -0.025f,
+                    -6.0f
+                ),
+
+            Scale =
+                new Vector3(
+                    20.0f,
+                    0.025f,
+                    0.06f
+                ),
+
+            Color =
+                new Vector3(
+                    0.75f,
+                    0.62f,
+                    0.12f
+                ),
+
+            IsFloor = true
+        }
+    );
+
+
+    // ========================================================
+    // FLOOR SAFETY LINE - SOUTH
+    // ========================================================
+
+    environmentObjects.Add(
+        new Cube
+        {
+            Position =
+                new Vector3(
+                    0.0f,
+                    -0.025f,
+                    6.0f
+                ),
+
+            Scale =
+                new Vector3(
+                    20.0f,
+                    0.025f,
+                    0.06f
+                ),
+
+            Color =
+                new Vector3(
+                    0.75f,
+                    0.62f,
+                    0.12f
+                ),
+
+            IsFloor = true
+        }
+    );
+
+
+    // // ========================================================
+    // // INFORMATION SIGN 1
+    // //
+    // // WASTE INCOMING
+    // //
+    // // Located near the input branch.
+    // // ========================================================
+
+    // informationSigns.Add(
+    //     new InformationSign(
+    //         "WASTE INCOMING",
+    //         new[]
+    //         {
+    //             "MATERIAL ENTRY",
+    //             "FLOW: FORWARD"
+    //         },
+    //         new Vector3(
+    //             -4.5f,
+    //             2.25f,
+    //             2.75f
+    //         ),
+    //         3.8f,
+    //         1.45f,
+    //         new Vector3(
+    //             0.95f,
+    //             0.72f,
+    //             0.12f
+    //         )
+    //     )
+    // );
+
+
+    // // ========================================================
+    // // INFORMATION SIGN 2
+    // //
+    // // AI / SORTING ZONE
+    // // ========================================================
+
+    // informationSigns.Add(
+    //     new InformationSign(
+    //         "AI SORTING ZONE",
+    //         new[]
+    //         {
+    //             "VISION DETECTION",
+    //             "ROBOTIC SORTING"
+    //         },
+    //         new Vector3(
+    //             2.0f,
+    //             2.40f,
+    //             2.75f
+    //         ),
+    //         4.0f,
+    //         1.45f,
+    //         new Vector3(
+    //             0.10f,
+    //             0.72f,
+    //             0.95f
+    //         )
+    //     )
+    // );
+
+
+    // // ========================================================
+    // // INFORMATION SIGN 3
+    // //
+    // // MATERIAL OUTPUT
+    // // ========================================================
+
+    // informationSigns.Add(
+    //     new InformationSign(
+    //         "MATERIAL OUTPUT",
+    //         new[]
+    //         {
+    //             "NEXT PROCESS",
+    //             "FLOW: FORWARD"
+    //         },
+    //         new Vector3(
+    //             -4.5f,
+    //             2.25f,
+    //             -2.75f
+    //         ),
+    //         3.8f,
+    //         1.45f,
+    //         new Vector3(
+    //             0.15f,
+    //             0.85f,
+    //             0.38f
+    //         )
+    //     )
+    // );
+
+
+    // // ========================================================
+    // // INFORMATION SIGN 4
+    // //
+    // // CONVEYOR STATUS
+    // // ========================================================
+
+    // informationSigns.Add(
+    //     new InformationSign(
+    //         "CONVEYOR STATUS",
+    //         new[]
+    //         {
+    //             "STATUS: RUNNING",
+    //             "SPEED: 0.70 M/S",
+    //             "LENGTH: 10.0 M",
+    //             "WIDTH: 1.40 M"
+    //         },
+    //         new Vector3(
+    //             6.0f,
+    //             2.20f,
+    //             2.80f
+    //         ),
+    //         3.8f,
+    //         2.0f,
+    //         new Vector3(
+    //             0.15f,
+    //             0.80f,
+    //             0.35f
+    //         )
+    //     )
+    // );
+
+
+    // ========================================================
+    // INITIALIZATION COMPLETE
+    // ========================================================
 
     Console.WriteLine(
         "OpenGL initialization completed."
     );
 
     Console.WriteLine(
+        "Open industrial environment created."
+    );
+
+    Console.WriteLine(
+        "Digital Twin information signs created."
+    );
+
+    Console.WriteLine(
         "Conveyor created successfully."
     );
 
+
     conveyor.PrintState();
+
+
+    Console.WriteLine();
+
+    Console.WriteLine(
+        "LEFT MOUSE + DRAG = Orbit 360 degrees"
+    );
+
+    Console.WriteLine(
+        "RIGHT MOUSE + DRAG = Pan"
+    );
+
+    Console.WriteLine(
+        "MOUSE WHEEL = Zoom"
+    );
+
+    Console.WriteLine(
+        "SPACE = Start / Stop conveyor"
+    );
+
+    Console.WriteLine(
+        "R = Reverse conveyor"
+    );
 };
 
 
 // ============================================================
-// 9. FRAMEBUFFER RESIZE
+// 12. FRAMEBUFFER RESIZE
 // ============================================================
 
 window.FramebufferResize += args =>
@@ -392,38 +992,176 @@ window.FramebufferResize += args =>
 
 
 // ============================================================
-// 10. UPDATE LOOP
+// 13. UPDATE
 // ============================================================
 
 window.UpdateFrame += args =>
 {
-    if (conveyor == null)
+    if (
+        conveyor == null
+    )
     {
         return;
     }
 
-    if (window.KeyboardState.IsKeyPressed(Keys.Space))
+
+    // ========================================================
+    // SPACE = START / STOP
+    // ========================================================
+
+    if (
+        window.KeyboardState.IsKeyPressed(
+            Keys.Space
+        )
+    )
     {
         conveyor.ToggleRunning();
     }
 
-    if (window.KeyboardState.IsKeyPressed(Keys.R))
+
+    // ========================================================
+    // R = REVERSE
+    // ========================================================
+
+    if (
+        window.KeyboardState.IsKeyPressed(
+            Keys.R
+        )
+    )
     {
         conveyor.ReverseDirection();
     }
 
-    conveyor.Update(args.Time);
+
+    // ========================================================
+    // MOUSE POSITION
+    // ========================================================
+
+    Vector2 currentMousePosition =
+        window.MouseState.Position;
+
+
+    // ========================================================
+    // LEFT MOUSE = ORBIT
+    // ========================================================
+
+    if (
+        window.MouseState.IsButtonDown(
+            MouseButton.Left
+        )
+    )
+    {
+        if (
+            !leftMouseDragging
+        )
+        {
+            leftMouseDragging = true;
+
+            lastMousePosition =
+                currentMousePosition;
+        }
+
+
+        Vector2 delta =
+            currentMousePosition -
+            lastMousePosition;
+
+
+        camera.Orbit(
+            delta.X,
+            delta.Y
+        );
+
+
+        lastMousePosition =
+            currentMousePosition;
+    }
+    else
+    {
+        leftMouseDragging =
+            false;
+    }
+
+
+    // ========================================================
+    // RIGHT MOUSE = PAN
+    // ========================================================
+
+    if (
+        window.MouseState.IsButtonDown(
+            MouseButton.Right
+        )
+    )
+    {
+        if (
+            !rightMouseDragging
+        )
+        {
+            rightMouseDragging = true;
+
+            lastMousePosition =
+                currentMousePosition;
+        }
+
+
+        Vector2 delta =
+            currentMousePosition -
+            lastMousePosition;
+
+
+        camera.Pan(
+            delta.X,
+            delta.Y
+        );
+
+
+        lastMousePosition =
+            currentMousePosition;
+    }
+    else
+    {
+        rightMouseDragging =
+            false;
+    }
+
+
+    // ========================================================
+    // MOUSE WHEEL = ZOOM
+    // ========================================================
+
+    float scroll =
+        window.MouseState.ScrollDelta.Y;
+
+
+    if (
+        MathF.Abs(scroll) >
+        0.001f
+    )
+    {
+        camera.Zoom(
+            scroll
+        );
+    }
+
+
+    // ========================================================
+    // CONVEYOR
+    // ========================================================
+
+    conveyor.Update(
+        args.Time
+    );
 };
 
 
 // ============================================================
-// 11. RENDER LOOP
+// 14. RENDER
 // ============================================================
 
 window.RenderFrame += args =>
 {
     // ========================================================
-    // CLEAR SCREEN
+    // CLEAR
     // ========================================================
 
     GL.Clear(
@@ -431,11 +1169,16 @@ window.RenderFrame += args =>
         ClearBufferMask.DepthBufferBit
     );
 
+
+    // ========================================================
+    // BACKGROUND
+    // ========================================================
+
     background?.Draw();
 
 
     // ========================================================
-    // MAKE SURE OBJECTS EXIST
+    // 3D SCENE
     // ========================================================
 
     if (
@@ -443,10 +1186,6 @@ window.RenderFrame += args =>
         conveyor != null
     )
     {
-        // ====================================================
-        // ACTIVATE SHADER
-        // ====================================================
-
         shader.Use();
 
 
@@ -460,16 +1199,12 @@ window.RenderFrame += args =>
 
 
         // ====================================================
-        // CAMERA VIEW
+        // CAMERA
         // ====================================================
 
         Matrix4 view =
             camera.GetViewMatrix();
 
-
-        // ====================================================
-        // CAMERA PROJECTION
-        // ====================================================
 
         Matrix4 projection =
             camera.GetProjectionMatrix(
@@ -477,97 +1212,209 @@ window.RenderFrame += args =>
             );
 
 
-        // ====================================================
-        // SEND VIEW MATRIX
-        // ====================================================
-
         shader.SetMatrix4(
             "view",
             view
         );
 
 
-        // ====================================================
-        // SEND PROJECTION MATRIX
-        // ====================================================
-
         shader.SetMatrix4(
             "projection",
             projection
         );
 
+
+        // ====================================================
+        // LIGHTING
+        // ====================================================
+
         shader.SetVector3(
             "lightDirection",
-            new Vector3(-0.55f, 0.85f, 0.45f)
+            new Vector3(
+                -0.45f,
+                0.85f,
+                0.35f
+            )
         );
+
 
         shader.SetVector3(
             "fillLightDirection",
-            new Vector3(0.55f, 0.40f, -0.65f)
+            new Vector3(
+                0.55f,
+                0.45f,
+                -0.65f
+            )
         );
+
 
         shader.SetVector3(
             "viewPosition",
             camera.Position
         );
 
+
         shader.SetFloat(
             "ambientStrength",
-            0.20f
+            0.18f
         );
+
 
         shader.SetFloat(
             "specularStrength",
-            0.34f
+            0.25f
         );
+
 
         shader.SetFloat(
             "fillLightStrength",
-            0.24f
+            0.16f
         );
-
-        shader.SetVector3(
-            "pointLightPositions[0]",
-            new Vector3(-2.5f, 4.5f, 2.0f)
-        );
-        shader.SetVector3(
-            "pointLightPositions[1]",
-            new Vector3(2.5f, 4.0f, -1.5f)
-        );
-        shader.SetVector3(
-            "pointLightPositions[2]",
-            new Vector3(0.0f, 3.5f, 3.0f)
-        );
-
-        shader.SetVector3(
-            "pointLightColors[0]",
-            new Vector3(1.0f, 0.78f, 0.58f)
-        );
-        shader.SetVector3(
-            "pointLightColors[1]",
-            new Vector3(0.72f, 0.84f, 1.0f)
-        );
-        shader.SetVector3(
-            "pointLightColors[2]",
-            new Vector3(1.0f, 0.88f, 0.70f)
-        );
-
-        shader.SetFloat("pointLightIntensities[0]", 1.8f);
-        shader.SetFloat("pointLightIntensities[1]", 1.4f);
-        shader.SetFloat("pointLightIntensities[2]", 1.2f);
-        shader.SetFloat("pointLightLinear", 0.08f);
-        shader.SetFloat("pointLightQuadratic", 0.025f);
-
-        floor?.Draw(shader);
 
 
         // ====================================================
-        // DRAW CONVEYOR
+        // POINT LIGHT 1
+        // ====================================================
+
+        shader.SetVector3(
+            "pointLightPositions[0]",
+            new Vector3(
+                -5.0f,
+                5.0f,
+                4.0f
+            )
+        );
+
+
+        shader.SetVector3(
+            "pointLightColors[0]",
+            new Vector3(
+                1.0f,
+                0.88f,
+                0.70f
+            )
+        );
+
+
+        shader.SetFloat(
+            "pointLightIntensities[0]",
+            0.85f
+        );
+
+
+        // ====================================================
+        // POINT LIGHT 2
+        // ====================================================
+
+        shader.SetVector3(
+            "pointLightPositions[1]",
+            new Vector3(
+                5.0f,
+                4.5f,
+                -2.0f
+            )
+        );
+
+
+        shader.SetVector3(
+            "pointLightColors[1]",
+            new Vector3(
+                0.72f,
+                0.84f,
+                1.0f
+            )
+        );
+
+
+        shader.SetFloat(
+            "pointLightIntensities[1]",
+            0.65f
+        );
+
+
+        // ====================================================
+        // POINT LIGHT 3
+        // ====================================================
+
+        shader.SetVector3(
+            "pointLightPositions[2]",
+            new Vector3(
+                0.0f,
+                6.0f,
+                5.0f
+            )
+        );
+
+
+        shader.SetVector3(
+            "pointLightColors[2]",
+            new Vector3(
+                1.0f,
+                0.95f,
+                0.82f
+            )
+        );
+
+
+        shader.SetFloat(
+            "pointLightIntensities[2]",
+            0.55f
+        );
+
+
+        // ====================================================
+        // ATTENUATION
+        // ====================================================
+
+        shader.SetFloat(
+            "pointLightLinear",
+            0.055f
+        );
+
+
+        shader.SetFloat(
+            "pointLightQuadratic",
+            0.018f
+        );
+
+
+        // ====================================================
+        // ENVIRONMENT
+        // ====================================================
+
+        foreach (
+            Cube environmentObject
+            in environmentObjects
+        )
+        {
+            environmentObject.Draw(
+                shader
+            );
+        }
+
+
+        // ====================================================
+        // CONVEYOR
         // ====================================================
 
         conveyor.Draw(
             shader
         );
+
+
+        // // ====================================================
+        // // INFORMATION SIGNS
+        // // ========================================================
+
+        // foreach (
+        //     InformationSign sign
+        //     in informationSigns
+        // )
+        // {
+        //     sign.Draw(
+        //         shader
+        //     );
+        // }
     }
 
 
@@ -578,17 +1425,21 @@ window.RenderFrame += args =>
     ErrorCode error =
         GL.GetError();
 
-    if (error != ErrorCode.NoError)
+
+    if (
+        error !=
+        ErrorCode.NoError
+    )
     {
         Console.WriteLine(
-            "OpenGL Error: "
-            + error
+            "OpenGL Error: " +
+            error
         );
     }
 
 
     // ========================================================
-    // DISPLAY FRAME
+    // DISPLAY
     // ========================================================
 
     window.SwapBuffers();
@@ -596,15 +1447,17 @@ window.RenderFrame += args =>
 
 
 // ============================================================
-// 12. START APPLICATION
+// 15. START
 // ============================================================
 
 Console.WriteLine(
     "Starting render loop..."
 );
 
+
 window.Run();
+
 
 Console.WriteLine(
     "Application closed."
-);  
+);
